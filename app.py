@@ -10,13 +10,27 @@ st.title("🎓 이과 입시 지원 가능성 분석기")
 # 📌 지원유형 선택
 admission_type = st.radio("🗂️ 지원유형 선택", ["정시", "수시"])
 
-# ⚙️ 가중치 설정
-with st.expander("⚙️ 과목별 가중치 조정"):
-    kor_weight = st.slider("국어 가중치", 0.0, 5.0, 3.5, 0.1)
-    math_weight = st.slider("수학 가중치", 0.0, 5.0, 3.8, 0.1)
-    sci_weight = st.slider("탐구 가중치", 0.0, 5.0, 3.5, 0.1)
+# 🎯 과목 가중치 프리셋
+preset_options = {
+    "선택 안 함": None,
+    "연세대학교": {"kor": 3.0, "math": 4.0, "sci": 3.0},
+    "고려대학교": {"kor": 3.3, "math": 3.3, "sci": 3.3},
+    "성균관대학교": {"kor": 2.5, "math": 4.0, "sci": 3.5}
+}
 
-# 과목 점수 입력
+preset_choice = st.selectbox("🏫 대학별 가중치 프리셋 선택", list(preset_options.keys()))
+
+# ⚙️ 가중치 설정
+default_kor = preset_options[preset_choice]["kor"] if preset_choice != "선택 안 함" else 3.5
+default_math = preset_options[preset_choice]["math"] if preset_choice != "선택 안 함" else 3.8
+default_sci = preset_options[preset_choice]["sci"] if preset_choice != "선택 안 함" else 3.5
+
+with st.expander("⚙️ 과목별 가중치 조정"):
+    kor_weight = st.slider("국어 가중치", 0.0, 5.0, default_kor, 0.1)
+    math_weight = st.slider("수학 가중치", 0.0, 5.0, default_math, 0.1)
+    sci_weight = st.slider("탐구 가중치", 0.0, 5.0, default_sci, 0.1)
+
+# 점수 입력
 with st.form("score_form"):
     st.subheader("📘 과목별 점수 입력")
     kor = st.number_input("국어 점수 (0~100)", 0, 100)
@@ -43,8 +57,6 @@ if submitted:
 # 분석 로직
 if st.session_state.get("submitted", False):
     ui = st.session_state["user_input"]
-
-    # 정시/수시 환산 차이 반영
     if ui["admission_type"] == "정시":
         total = (
             ui["kor"] * ui["kor_weight"]
@@ -53,7 +65,7 @@ if st.session_state.get("submitted", False):
             + ENG_PENALTY[ui["eng_grade"]]
             + NAESIN_SCORE[ui["school_grade"]]
         )
-    else:  # 수시
+    else:
         total = (
             (ui["kor"] + ui["math"] + ui["sci"]) * 0.6
             + NAESIN_SCORE[ui["school_grade"]] * 2
@@ -61,7 +73,6 @@ if st.session_state.get("submitted", False):
 
     st.markdown(f"### ✅ 계산된 환산 점수: **{round(total, 2)}점**")
 
-    # 분류 및 확률 계산
     def classify(score, cutoff):
         diff = score - cutoff
         if pd.isna(score) or pd.isna(cutoff): return "데이터 부족"
@@ -81,7 +92,7 @@ if st.session_state.get("submitted", False):
     data["분석된 지원 가능성"] = data["적정점수"].apply(lambda c: classify(total, c))
     data["합격 확률(%)"] = data["적정점수"].apply(lambda c: estimate_probability(total, c))
 
-    # 🎛️ 필터 설정
+    # 필터
     st.markdown("## 🎛️ 결과 필터")
     possibility_filter = st.multiselect("📌 지원 가능성 선택", ["소신", "적정", "안정"], default=["적정", "안정"])
     level_options = data["대학 수준"].unique().tolist()
@@ -90,11 +101,9 @@ if st.session_state.get("submitted", False):
     univ_keyword = st.text_input("🏫 대학명 키워드", "")
     top10_only = st.checkbox("🔝 상위 10개만 보기")
 
-    # 정렬
     sort_column = st.selectbox("정렬 기준", ["적정점수", "합격 확률(%)", "대학교", "전공"])
     sort_asc = st.radio("정렬 방식", ["내림차순", "오름차순"]) == "오름차순"
 
-    # 필터링
     result = data.copy()
     if possibility_filter:
         result = result[result["분석된 지원 가능성"].isin(possibility_filter)]
@@ -109,19 +118,16 @@ if st.session_state.get("submitted", False):
     if top10_only:
         result = result.head(10)
 
-    # 결과 출력
     st.markdown("### 🎯 분석 결과")
     st.dataframe(result[["대학교", "전공", "대학 수준", "적정점수", "분석된 지원 가능성", "합격 확률(%)"]])
 
     if result.empty:
         st.warning("조건에 맞는 학과가 없습니다.")
     else:
-        # 📈 막대그래프
         st.markdown("### 📊 대학별 합격 확률")
         bar_fig = px.bar(result, x="대학교", y="합격 확률(%)", color="분석된 지원 가능성", hover_data=["전공"])
         st.plotly_chart(bar_fig, use_container_width=True)
 
-        # 🥧 원형그래프
         st.markdown("### 🥧 지원 가능성 분포")
         pie_data = result["분석된 지원 가능성"].value_counts().reset_index()
         pie_data.columns = ["지원 가능성", "학과 수"]
